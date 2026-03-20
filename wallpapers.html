@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Grainy Gradient Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000;
+            font-family: "Cormorant Garamond", "Palatino Linotype", Palatino, serif;
+        }
+        canvas { width: 100vw; height: 100vh; display: block; }
+
+        #ui {
+            position: absolute; bottom: 36px; right: 44px;
+            display: flex; flex-direction: column; align-items: center; gap: 14px; z-index: 10;
+        }
+        .btn {
+            cursor: pointer; transition: opacity 0.3s, transform 0.2s;
+            user-select: none; opacity: 0.35; display: flex; align-items: center; justify-content: center;
+        }
+        .btn:hover { opacity: 1; transform: scale(1.1); }
+        .btn svg { display: block; }
+
+        #info { position: absolute; bottom: 40px; left: 44px; color: white; z-index: 10; pointer-events: none; }
+        #vibeName  { font-size: 36px; font-weight: 300; display: block; letter-spacing: 0.5px; }
+        #modeLabel { font-size: 11px; font-weight: 300; display: block; opacity: 0.35; letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
+        #countdown { font-size: 10px; font-weight: 300; display: block; opacity: 0.22; letter-spacing: 1.5px; margin-top: 5px; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <span id="vibeName">...</span>
+        <span id="modeLabel">...</span>
+        <span id="countdown"></span>
+    </div>
+
+    <div id="ui">
+        <!-- Up arrow: long-tail, serif-weight SVG -->
+        <div class="btn" onclick="changeVibe(-1)" title="Previous">
+            <svg width="22" height="42" viewBox="0 0 22 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="11" y1="38" x2="11" y2="5" stroke="white" stroke-width="1.1"/>
+                <polyline points="4,13 11,4 18,13" fill="none" stroke="white" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+                <line x1="7" y1="38" x2="15" y2="38" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+        </div>
+
+        <!-- Sun / Moon theme toggle -->
+        <div class="btn" id="themeBtn" onclick="switchTheme()" title="Toggle light / dark"></div>
+
+        <!-- Down arrow -->
+        <div class="btn" onclick="changeVibe(1)" title="Next">
+            <svg width="22" height="42" viewBox="0 0 22 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="11" y1="4" x2="11" y2="37" stroke="white" stroke-width="1.1"/>
+                <polyline points="4,29 11,38 18,29" fill="none" stroke="white" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>
+                <line x1="7" y1="4" x2="15" y2="4" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script type="x-shader/x-fragment" id="fragmentShader">
+        precision highp float;
+        uniform float u_time;
+        uniform vec2  u_resolution;
+        uniform vec3  u_colA;
+        uniform vec3  u_colB;
+        uniform vec3  u_colC;
+        uniform float u_grain;
+        uniform float u_modeA;
+        uniform float u_modeB;
+        uniform float u_modeFrac;
+
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float hash2(vec2 p) {
+            return fract(sin(dot(p, vec2(269.5, 183.3))) * 17231.3412);
+        }
+        float noise(vec2 p) {
+            vec2 i = floor(p); vec2 f = fract(p);
+            vec2 u = f*f*(3.0-2.0*f);
+            return mix(mix(hash(i), hash(i+vec2(1,0)), u.x),
+                       mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), u.x), u.y);
+        }
+        float fbm(vec2 p) {
+            float v=0.0, a=0.5;
+            for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.1; a*=0.5; }
+            return v;
+        }
+        float stars(vec2 uv) {
+            vec2 g1 = floor(uv*380.0);
+            vec2 g2 = floor(uv*247.0 + vec2(31.7,58.3));
+            vec2 g3 = floor(uv*193.0 + vec2(87.1,14.9));
+            float h1 = hash(g1), h2 = hash2(g2);
+            float h3 = hash(g3 + vec2(h2*10.0, h1*7.0));
+            return smoothstep(0.996,1.0,h1)*0.5 + smoothstep(0.997,1.0,h2)*0.35 + smoothstep(0.998,1.0,h3)*0.25;
+        }
+
+        vec3 evalPulse(vec2 uvR, float ar, float t, vec3 cA, vec3 cB, vec3 cC) {
+            vec2 srcA = vec2(ar*0.28 + 0.18*sin(t*0.19), 0.35 + 0.12*cos(t*0.23));
+            vec2 srcB = vec2(ar*0.72 + 0.14*cos(t*0.17), 0.65 + 0.10*sin(t*0.21));
+            float dA = distance(uvR, srcA), dB = distance(uvR, srcB);
+            float wA1 = sin(dA*7.0  - t*1.05       )*0.5+0.5;
+            float wA2 = sin(dA*12.0 - t*0.8  + 0.9 )*0.5+0.5;
+            float wB1 = sin(dB*6.5  - t*0.95 + 1.7 )*0.5+0.5;
+            float wB2 = sin(dB*11.0 - t*1.1  + 3.1 )*0.5+0.5;
+            float fA  = smoothstep(3.0,0.0,dA), fB = smoothstep(3.0,0.0,dB);
+            float moire = pow(wA1,3.0)*fA + pow(wB1,3.0)*fB;
+            float sharp = pow(wA2,6.0)*fA + pow(wB2,6.0)*fB;
+            vec3 c = mix(cA, cB, clamp(moire*0.7,0.0,1.0));
+            c = mix(c, cC, clamp(sharp*0.8,0.0,1.0));
+            c += cC*exp(-dA*2.0)*0.3 + cB*exp(-dB*2.0)*0.3;
+            return c;
+        }
+
+        vec3 evalMode(int mode, vec2 uv, vec2 uvR, float ar, float t,
+                      vec3 cA, vec3 cB, vec3 cC) {
+            vec3 color = cA;
+
+            if (mode == 0) {
+                vec2 src = vec2(-0.6, -0.5);
+                float d = distance(uvR, src);
+                float raw  = sin(d*5.5 - t*0.55);
+                float lead = smoothstep(0.0,1.0,raw) * exp(-max(0.0,-raw)*3.0);
+                float ringA = pow(max(0.0,lead), 3.0);
+                float raw2  = sin(d*8.8 - t*0.42 + 1.3);
+                float lead2 = smoothstep(0.0,1.0,raw2) * exp(-max(0.0,-raw2)*4.0);
+                float ringB = pow(max(0.0,lead2), 5.0);
+                float falloff = smoothstep(4.5,0.2,d);
+                color  = mix(cA, cB, ringA * falloff);
+                color  = mix(color, cC, ringB * falloff * 0.75);
+                color += cC * exp(-d*1.8) * 0.35;
+
+            } else if (mode == 1) {
+                float warp  = fbm(vec2(uv.x*2.8 + t*0.12, uv.y*1.0 - t*0.07)) * 0.4;
+                float warp2 = fbm(vec2(uv.x*1.5 - t*0.09, uv.y*2.0 + t*0.05)) * 0.25;
+                float curtain = fbm(vec2((uv.x+warp)*3.5, (uv.y+warp2)*0.9 + t*0.05));
+                float band    = smoothstep(0.05,0.55,uv.y) * smoothstep(1.0,0.45,uv.y);
+                float shimmer = fbm(vec2(uv.x*9.0+t*0.4, uv.y*5.0-t*0.25));
+                color  = mix(cA, cB, curtain * band * 1.1);
+                color  = mix(color, cC, shimmer * band * pow(curtain,2.0) * 0.7);
+                color += cC * band * pow(curtain,4.0) * 0.6;
+                color += vec3(stars(uv) * (1.0 - band*0.9));
+
+            } else if (mode == 2) {
+                vec2 centre = vec2(ar*0.5, 0.5);
+                vec2 toC    = normalize(uvR - centre);
+                float aberr = 0.022;
+                vec3 cr = evalPulse(uvR + toC*aberr,  ar, t, cA, cB, cC);
+                vec3 cg = evalPulse(uvR,               ar, t, cA, cB, cC);
+                vec3 cb = evalPulse(uvR - toC*aberr,  ar, t, cA, cB, cC);
+                color = vec3(cr.r, cg.g, cb.b);
+
+            } else if (mode == 3) {
+                vec2 p = uvR;
+                vec2 q  = vec2(fbm(p + t*0.07), fbm(p + vec2(1.7,9.2) + t*0.05));
+                vec2 r2 = vec2(fbm(p + 2.0*q + vec2(1.7,9.2) + t*0.04),
+                               fbm(p + 2.0*q + vec2(8.3,2.8)  + t*0.05));
+                float f = fbm(p + 2.5*r2);
+                color  = mix(cA, cB, clamp(f*2.0,        0.0,1.0));
+                color  = mix(color, cC, clamp(f*f*4.0-1.5,0.0,1.0));
+
+            } else if (mode == 4) {
+                float warpX = fbm(vec2(uv.x*1.8 + t*0.07, uv.y*2.2 - t*0.04)) * 0.35;
+                float warpY = fbm(vec2(uv.x*2.4 - t*0.05, uv.y*1.4 + t*0.06)) * 0.28;
+                float bandA = sin((uv.y + warpX) * 8.0  + warpY*3.0 + t*0.22) * 0.5 + 0.5;
+                float bandB = sin((uv.y + warpY) * 13.0 - warpX*2.0 - t*0.17 + 1.4) * 0.5 + 0.5;
+                float diag  = sin((uv.x*0.6 + uv.y + warpX*0.5) * 7.0 + t*0.31 + 2.0) * 0.5 + 0.5;
+                float caus  = pow(bandA,3.0) * pow(bandB,2.0);
+                float shine = pow(diag,5.0) * 0.6;
+                color  = mix(cA, cB, clamp(caus*1.4,              0.0,1.0));
+                color  = mix(color, cC, clamp(shine + caus*bandB*0.5, 0.0,1.0));
+
+            } else {
+                vec2 p = vec2(uv.x*2.5, uv.y*1.8 - t*0.38);
+                float f1 = fbm(p);
+                float f2 = fbm(p + vec2(3.4,1.7) + t*0.1);
+                float heat = pow(max(0.0, f1*f2*3.2-0.3), 2.0);
+                float rise = smoothstep(1.0,0.0,uv.y)*0.5 + 0.5;
+                color  = mix(cA, cB, heat * rise);
+                color  = mix(color, cC, pow(heat,3.0) * rise);
+                color += cC * stars(uv + vec2(0.0, t*0.09)) * heat * 2.0;
+            }
+
+            return color;
+        }
+
+        void main() {
+            vec2  uv  = gl_FragCoord.xy / u_resolution.xy;
+            float ar  = u_resolution.x / u_resolution.y;
+            vec2  uvR = vec2(uv.x*ar, uv.y);
+            float t   = u_time * 0.18;
+            int   mA  = int(u_modeA + 0.5);
+            int   mB  = int(u_modeB + 0.5);
+            vec3 cA = evalMode(mA, uv, uvR, ar, t, u_colA, u_colB, u_colC);
+            vec3 cB = evalMode(mB, uv, uvR, ar, t, u_colA, u_colB, u_colC);
+            vec3 color = mix(cA, cB, u_modeFrac);
+            float gr = hash(gl_FragCoord.xy * vec2(1.123,4.567));
+            float gg = hash(gl_FragCoord.xy * vec2(2.234,5.678));
+            float gb = hash(gl_FragCoord.xy * vec2(3.345,6.789));
+            color += (vec3(gr,gg,gb) - 0.5) * u_grain;
+            gl_FragColor = vec4(color, 1.0);
+        }
+    </script>
+
+    <script>
+        const modeNames = ["Accretion", "Aurora", "Chromatic Pulse", "Fluid", "Tide", "Ember Drift"];
+
+        // SVG icons for theme button
+        const SVG_SUN  = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.1"/>
+            <line x1="12" y1="2"   x2="12" y2="5"   stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="12" y1="19"  x2="12" y2="22"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="2"  y1="12"  x2="5"  y2="12"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="19" y1="12"  x2="22" y2="12"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="4.93"  y1="4.93"  x2="7.05"  y2="7.05"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="16.95" y1="16.95" x2="19.07" y2="19.07" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="4.93"  y1="19.07" x2="7.05"  y2="16.95" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+            <line x1="16.95" y1="7.05"  x2="19.07" y2="4.93"  stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+        </svg>`;
+
+        const SVG_MOON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"
+                  stroke="white" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+
+        const vibes = [
+            // dark
+            { name:"Interstellar", a:[0.0,0.0,0.02],   b:[0.0,0.58,0.5],   c:[0.9,0.12,0.55],  grain:0.09, mode:0, dark:true  },
+            { name:"Nordic Night", a:[0.01,0.03,0.08],  b:[0.04,0.52,0.36], c:[0.32,0.08,0.68], grain:0.09, mode:1, dark:true  },
+            { name:"MBV",          a:[0.05,0.0,0.04],   b:[0.85,0.08,0.38], c:[0.98,0.78,0.82], grain:0.18, mode:3, dark:true  },
+            { name:"Amethyst",     a:[0.04,0.01,0.1],   b:[0.35,0.05,0.62], c:[0.7,0.28,0.95],  grain:0.12, mode:3, dark:true  },
+            { name:"Velvet",       a:[0.05,0.0,0.02],   b:[0.36,0.02,0.09], c:[0.16,0.0,0.04],  grain:0.13, mode:4, dark:true  },
+            { name:"Embers",       a:[0.04,0.01,0.0],   b:[0.62,0.09,0.01], c:[1.0,0.42,0.02],  grain:0.15, mode:5, dark:true  },
+            { name:"Deep Freeze",  a:[0.0,0.02,0.06],   b:[0.04,0.28,0.72], c:[0.65,0.88,1.0],  grain:0.08, mode:1, dark:true  },
+            { name:"Abyssal",      a:[0.0,0.02,0.03],   b:[0.0,0.52,0.48],  c:[0.04,0.82,0.72], grain:0.11, mode:3, dark:true  },
+            { name:"Acid Moss",    a:[0.02,0.05,0.01],  b:[0.28,0.62,0.03], c:[0.62,0.85,0.04], grain:0.14, mode:4, dark:true  },
+            // light
+            { name:"Golden Hour",  a:[0.14,0.03,0.01],  b:[1.0,0.6,0.04],   c:[0.95,0.26,0.35], grain:0.11, mode:2, dark:false },
+            { name:"Seaside",      a:[0.0,0.1,0.28],    b:[0.88,0.72,0.18], c:[0.04,0.58,0.58], grain:0.10, mode:2, dark:false },
+            { name:"Cloud Nine",   a:[0.5,0.62,0.78],   b:[0.95,0.97,1.0],  c:[0.68,0.76,0.96], grain:0.05, mode:3, dark:false },
+            { name:"Solar Flare",  a:[0.2,0.04,0.0],    b:[1.0,0.48,0.0],   c:[1.0,0.85,0.08],  grain:0.10, mode:2, dark:false },
+        ];
+
+        function randFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+        function vibeIdx(v)    { return vibes.indexOf(v); }
+
+        let currentIdx = Math.floor(Math.random() * vibes.length);
+        let state = {
+            a:     [...vibes[currentIdx].a],
+            b:     [...vibes[currentIdx].b],
+            c:     [...vibes[currentIdx].c],
+            modeA: vibes[currentIdx].mode,
+            modeB: vibes[currentIdx].mode,
+            frac:  1.0
+        };
+
+        const canvas = document.getElementById('canvas');
+        const gl     = canvas.getContext('webgl');
+        const fsrc   = document.getElementById('fragmentShader').text;
+        const vsrc   = `attribute vec2 position; void main(){ gl_Position=vec4(position,0,1); }`;
+
+        function mkShader(type, src) {
+            const s = gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s); return s;
+        }
+        const prog = gl.createProgram();
+        gl.attachShader(prog, mkShader(gl.VERTEX_SHADER, vsrc));
+        gl.attachShader(prog, mkShader(gl.FRAGMENT_SHADER, fsrc));
+        gl.linkProgram(prog); gl.useProgram(prog);
+
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]), gl.STATIC_DRAW);
+        const posLoc = gl.getAttribLocation(prog, "position");
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+        const U = {
+            time:     gl.getUniformLocation(prog,"u_time"),
+            res:      gl.getUniformLocation(prog,"u_resolution"),
+            colA:     gl.getUniformLocation(prog,"u_colA"),
+            colB:     gl.getUniformLocation(prog,"u_colB"),
+            colC:     gl.getUniformLocation(prog,"u_colC"),
+            grain:    gl.getUniformLocation(prog,"u_grain"),
+            modeA:    gl.getUniformLocation(prog,"u_modeA"),
+            modeB:    gl.getUniformLocation(prog,"u_modeB"),
+            modeFrac: gl.getUniformLocation(prog,"u_modeFrac")
+        };
+
+        // ── Auto-rotation ─────────────────────────────────────────────────────────
+        const AUTO_MS = 30 * 60 * 1000;
+        let nextChangeAt = Date.now() + AUTO_MS;
+
+        function autoRotate() {
+            const isDark = vibes[currentIdx].dark;
+            const pool   = vibes.filter((v, i) => v.dark === isDark && i !== currentIdx);
+            if (pool.length === 0) return;
+            setVibe(vibeIdx(randFrom(pool)));
+        }
+
+        function pad2(n) { return String(n).padStart(2, '0'); }
+
+        function updateCountdown() {
+            const now  = new Date();
+            const date = `${pad2(now.getDate())}-${pad2(now.getMonth()+1)}-${now.getFullYear()}`;
+            const time = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+            const rem  = Math.max(0, nextChangeAt - Date.now());
+            const rm   = pad2(Math.floor(rem / 60000));
+            const rs   = pad2(Math.floor((rem % 60000) / 1000));
+            document.getElementById('countdown').innerText =
+                `${date}  ${time}  ·  next wallpaper in ${rm}:${rs}`;
+        }
+
+        setInterval(() => {
+            if (Date.now() >= nextChangeAt) {
+                autoRotate();
+                nextChangeAt = Date.now() + AUTO_MS;
+            }
+            updateCountdown();
+        }, 1000);
+
+        // ── Vibe switching ────────────────────────────────────────────────────────
+        function updateThemeIcon() {
+            document.getElementById('themeBtn').innerHTML =
+                vibes[currentIdx].dark ? SVG_MOON : SVG_SUN;
+        }
+
+        function setVibe(idx) {
+            currentIdx = idx;
+            const v = vibes[idx];
+            state.modeA = state.modeB;
+            state.modeB = v.mode;
+            state.frac  = 0.0;
+            document.getElementById('vibeName').innerText  = v.name;
+            document.getElementById('modeLabel').innerText = modeNames[v.mode];
+            updateThemeIcon();
+        }
+
+        function changeVibe(dir) {
+            setVibe((currentIdx + dir + vibes.length) % vibes.length);
+            nextChangeAt = Date.now() + AUTO_MS;
+        }
+
+        function switchTheme() {
+            const wantDark = !vibes[currentIdx].dark;
+            const pool = vibes.filter(v => v.dark === wantDark);
+            if (pool.length === 0) return;
+            setVibe(vibeIdx(randFrom(pool)));
+            nextChangeAt = Date.now() + AUTO_MS;
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp')   changeVibe(-1);
+            if (e.key === 'ArrowDown') changeVibe(1);
+            if (e.key === ' ')         switchTheme();
+        });
+
+        // ── Init ──────────────────────────────────────────────────────────────────
+        document.getElementById('vibeName').innerText  = vibes[currentIdx].name;
+        document.getElementById('modeLabel').innerText = modeNames[vibes[currentIdx].mode];
+        updateThemeIcon();
+        updateCountdown();
+
+        function lerp(a,b,t){ return a+(b-a)*t; }
+        function smoothstep(x){ return x*x*(3.0-2.0*x); }
+
+        function render(time) {
+            canvas.width  = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            const v = vibes[currentIdx];
+            const s = 0.032;
+            for (let i=0;i<3;i++){
+                state.a[i] = lerp(state.a[i], v.a[i], s);
+                state.b[i] = lerp(state.b[i], v.b[i], s);
+                state.c[i] = lerp(state.c[i], v.c[i], s);
+            }
+            if (state.frac < 1.0) {
+                state.frac = Math.min(1.0, state.frac + 0.018);
+                if (state.frac >= 1.0) state.modeA = state.modeB;
+            }
+
+            gl.uniform1f(U.time,      time * 0.001);
+            gl.uniform2f(U.res,       canvas.width, canvas.height);
+            gl.uniform3fv(U.colA,     state.a);
+            gl.uniform3fv(U.colB,     state.b);
+            gl.uniform3fv(U.colC,     state.c);
+            gl.uniform1f(U.grain,     v.grain);
+            gl.uniform1f(U.modeA,     state.modeA);
+            gl.uniform1f(U.modeB,     state.modeB);
+            gl.uniform1f(U.modeFrac,  smoothstep(state.frac));
+
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

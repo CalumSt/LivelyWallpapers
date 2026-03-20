@@ -407,16 +407,6 @@
 
             // ── LIGHT ─────────────────────────────────────────────────────────────
             {
-                name: "Golden Hour",
-                // Mode 6 handles all colour logic internally.
-                // cA = warm yellow, cB = soft peach, cC = saturated sunset pink.
-                // No dark values — the shader floors luminance to keep everything bright.
-                a: hex("#c58500"),  // warm lemon-gold
-                b: hex("#ffba2c"),  // soft peach
-                c: hex("#FF99CB"),  // saturated sunset pink
-                grain: 0.11, mode: 6, dark: false
-            },
-            {
                 name: "Cloud Nine",
                 a: hex("#809ec7"), b: hex("#f2f7ff"), c: hex("#adc2f5"),
                 grain: 0.05, mode: 3, dark: false
@@ -425,11 +415,6 @@
                 name: "Silk",
                 a: hex("#C8A882"), b: hex("#F5ECD7"), c: hex("#E8B4B8"),
                 grain: 0.07, mode: 4, dark: false
-            },
-            {
-                name: "Overcast",
-                a: hex("#6B7280"), b: hex("#F3F4F0"), c: hex("#9CA3AF"),
-                grain: 0.06, mode: 4, dark: false
             },
             {
                 name: "Seaside",

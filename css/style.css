@@ -1,0 +1,167 @@
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    overflow: hidden; background: #000;
+    font-family: "Cormorant Garamond", "Palatino Linotype", Palatino, serif;
+}
+canvas { width: 100vw; height: 100vh; display: block; }
+
+/* ── Wallpaper name / mode / countdown ───────────────────────────────────── */
+#info {
+    position: absolute; top: 50%; right: 120px;
+    transform: translateY(-50%);
+    color: white; z-index: 21; pointer-events: none;
+    text-align: right;
+    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#vibeName  { font-size: 36px; font-weight: 300; display: block; letter-spacing: 0.5px; }
+#modeLabel { font-size: 11px; font-weight: 300; display: block; opacity: 0.35; letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
+#countdown { font-size: 10px; font-weight: 300; display: block; opacity: 0.22; letter-spacing: 1.5px; margin-top: 5px; font-style: italic; }
+
+/* ── Arrow / theme buttons ───────────────────────────────────────────────── */
+#ui {
+    position: absolute; top: 50%; right: 44px; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 14px; z-index: 21;
+    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn {
+    cursor: pointer; transition: opacity 0.3s, transform 0.2s;
+    user-select: none; opacity: 0.35; display: flex; align-items: center; justify-content: center;
+}
+.btn:hover { opacity: 1; transform: scale(1.1); }
+.btn svg { display: block; }
+
+/* ── Shift info + buttons left when monitor panel is open ────────────────── */
+body.monitor-open #info { right: calc(120px + 300px); }
+body.monitor-open #ui   { right: calc( 44px + 300px); }
+
+/* ── System monitor panel ────────────────────────────────────────────────── */
+#monitor-tab {
+    position: absolute; right: 0; top: 50%;
+    transform: translateY(-50%);
+    width: 18px; height: 80px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 6px 0 0 6px;
+    cursor: pointer; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+    writing-mode: vertical-rl;
+    font-size: 8px; font-weight: 300; letter-spacing: 2px;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+    user-select: none;
+}
+#monitor-tab:hover { background: rgba(255,255,255,0.15); }
+
+#monitor {
+    position: absolute; right: 0; top: 0; bottom: 0;
+    width: 300px;
+    background: rgba(4, 4, 8, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-left: 1px solid rgba(255,255,255,0.07);
+    z-index: 19;
+    transform: translateX(100%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 32px 28px 32px 28px;
+    box-sizing: border-box;
+    scrollbar-width: none;
+}
+#monitor::-webkit-scrollbar { display: none; }
+#monitor.open { transform: translateX(0); }
+
+/* Move tab to the left of the panel when open */
+#monitor.open ~ #monitor-tab { right: 300px; }
+
+.mon-title {
+    font-size: 11px; font-weight: 300; letter-spacing: 3px;
+    text-transform: uppercase; color: rgba(255,255,255,0.35);
+    margin: 0 0 20px 0; display: block;
+}
+.mon-section {
+    margin-bottom: 26px;
+}
+.mon-section-label {
+    font-size: 10px; font-weight: 300; letter-spacing: 2.5px;
+    text-transform: uppercase; color: rgba(255,255,255,0.22);
+    margin-bottom: 10px; display: block;
+}
+
+/* Metric row */
+.metric { margin-bottom: 12px; }
+.metric-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 5px;
+}
+.metric-name {
+    font-size: 12px; font-weight: 300; color: rgba(255,255,255,0.65);
+    letter-spacing: 0.3px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 180px;
+}
+.metric-value {
+    font-size: 12px; font-weight: 300; color: rgba(255,255,255,0.9);
+    letter-spacing: 0.5px; white-space: nowrap; flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.bar-track {
+    height: 2px; background: rgba(255,255,255,0.08); border-radius: 1px;
+    overflow: hidden;
+}
+.bar-fill {
+    height: 100%; border-radius: 1px;
+    transition: width 0.8s ease, background 0.8s ease;
+}
+
+/* Colour ramps */
+.bar-cpu  { background: linear-gradient(90deg, #00B4CC, #ffc187); }
+.bar-gpu  { background: linear-gradient(90deg, #C040FF, #00E87A); }
+.bar-ram  { background: linear-gradient(90deg, #FF6B9D, #FFD166); }
+.bar-net  { background: rgba(255,255,255,0.4); }
+.bar-disk { background: linear-gradient(90deg, #2D6A9F, #E8F4FF); }
+
+/* Sparkline */
+.sparkline {
+    width: 100%; height: 28px; display: block;
+    margin-top: 6px; opacity: 0.6;
+}
+
+/* Text stat rows */
+.stat-row {
+    display: flex; justify-content: space-between;
+    margin-bottom: 8px;
+}
+.stat-label {
+    font-size: 11px; font-weight: 300; color: rgba(255,255,255,0.35);
+    letter-spacing: 0.5px;
+}
+.stat-val {
+    font-size: 11px; font-weight: 300; color: rgba(255,255,255,0.75);
+    letter-spacing: 0.5px; font-variant-numeric: tabular-nums;
+}
+
+/* Divider */
+.mon-divider {
+    border: none; border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 20px 0;
+}
+
+/* Clock */
+#mon-clock {
+    font-size: 28px; font-weight: 300; color: rgba(255,255,255,0.85);
+    letter-spacing: 1px; display: block; margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+}
+#mon-date {
+    font-size: 11px; font-weight: 300; color: rgba(255,255,255,0.3);
+    letter-spacing: 2px; text-transform: uppercase; display: block;
+    margin-bottom: 28px;
+}
+
+/* Lively notice */
+#lively-notice {
+    font-size: 10px; font-weight: 300; color: rgba(255,255,255,0.18);
+    letter-spacing: 1px; font-style: italic; margin-top: 12px;
+    display: none;
+}
